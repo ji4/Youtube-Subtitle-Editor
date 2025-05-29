@@ -510,6 +510,7 @@
             }
         }
     </style>
+    <script src="https://www.youtube.com/iframe_api"></script>
 </head>
 <body>
     <div class="container">
@@ -594,18 +595,59 @@
         let youtubeSubtitles = [];
         let isControlsCollapsed = false;
         let isVerticalMode = false;
+        let player = null;
         
-        // YouTube字幕API相關
+        // 初始化 YouTube Player
+        function onYouTubeIframeAPIReady() {
+            player = new YT.Player('youtubeIframe', {
+                events: {
+                    'onReady': onPlayerReady,
+                    'onStateChange': onPlayerStateChange
+                }
+            });
+        }
+
+        function onPlayerReady(event) {
+            console.log('YouTube Player 已準備就緒');
+        }
+
+        function onPlayerStateChange(event) {
+            if (event.data === YT.PlayerState.PLAYING) {
+                isPlaying = true;
+                startTimeTracking();
+            } else if (event.data === YT.PlayerState.PAUSED) {
+                isPlaying = false;
+                stopTimeTracking();
+            }
+        }
+        
         async function fetchYouTubeSubtitles(videoId) {
             try {
                 showDeleteNotification('正在獲取YouTube字幕...', 'info');
                 
-                // 模擬字幕數據（實際應用需要YouTube API key）
-                youtubeSubtitles = [
-                    { start: 0, text: "歡迎觀看這個影片" },
-                    { start: 3, text: "今天我們要介紹" },
-                    { start: 6, text: "如何使用這個工具" }
-                ];
+                // 使用 YouTube iframe API 獲取字幕
+                const response = await fetch(`https://www.youtube.com/api/timedtext?lang=zh-TW&v=${videoId}`);
+                if (!response.ok) {
+                    throw new Error('無法獲取字幕');
+                }
+                
+                const xmlText = await response.text();
+                const parser = new DOMParser();
+                const xmlDoc = parser.parseFromString(xmlText, 'text/xml');
+                
+                // 解析字幕內容
+                youtubeSubtitles = [];
+                const textElements = xmlDoc.getElementsByTagName('text');
+                
+                for (let element of textElements) {
+                    const start = parseFloat(element.getAttribute('start'));
+                    const text = element.textContent.trim();
+                    
+                    youtubeSubtitles.push({
+                        start: start,
+                        text: text
+                    });
+                }
                 
                 showDeleteNotification('YouTube字幕載入完成', 'success');
                 return youtubeSubtitles;
@@ -614,6 +656,46 @@
                 showDeleteNotification('無法獲取YouTube字幕，將使用校正檔案的時間', 'error');
                 return [];
             }
+        }
+        
+        function parseSubtitleContent(content) {
+            // 解析字幕內容，轉換成需要的格式
+            const subtitles = [];
+            const lines = content.split('\n');
+            let currentTime = 0;
+            let currentText = '';
+            
+            for (let line of lines) {
+                if (line.match(/^\d{2}:\d{2}:\d{2},\d{3}/)) {
+                    // 如果是時間戳記
+                    if (currentText) {
+                        subtitles.push({
+                            start: currentTime,
+                            text: currentText.trim()
+                        });
+                        currentText = '';
+                    }
+                    const timeMatch = line.match(/(\d{2}):(\d{2}):(\d{2}),(\d{3})/);
+                    if (timeMatch) {
+                        currentTime = parseInt(timeMatch[1]) * 3600 + 
+                                     parseInt(timeMatch[2]) * 60 + 
+                                     parseInt(timeMatch[3]);
+                    }
+                } else if (line.trim()) {
+                    // 如果是字幕文字
+                    currentText += line.trim() + ' ';
+                }
+            }
+            
+            // 添加最後一個字幕
+            if (currentText) {
+                subtitles.push({
+                    start: currentTime,
+                    text: currentText.trim()
+                });
+            }
+            
+            return subtitles;
         }
         
         function findMatchingSubtitle(wrongText) {
@@ -821,49 +903,29 @@
         }
         
         function controlVideo(action) {
-            if (!isVideoLoaded) {
+            if (!isVideoLoaded || !player) {
                 showDeleteNotification('請先載入影片', 'error');
-                return;
-            }
-            
-            const iframe = document.getElementById('youtubeIframe');
-            if (!iframe) {
-                showDeleteNotification('影片載入錯誤', 'error');
                 return;
             }
             
             if (action === 'play') {
                 if (!isPlaying) {
-                    isPlaying = true;
-                    startTimeTracking();
-                    
-                    const startTime = Math.floor(currentTime);
-                    const newUrl = `https://www.youtube.com/embed/${currentVideoId}?enablejsapi=1&start=${startTime}&autoplay=1&rel=0&modestbranding=1&origin=${encodeURIComponent(window.location.origin)}`;
-                    iframe.src = newUrl;
+                    player.playVideo();
                     showDeleteNotification(`▶️ 從 ${formatTime(currentTime)} 開始播放`);
                 }
             } else if (action === 'pause') {
                 if (isPlaying) {
-                    isPlaying = false;
-                    stopTimeTracking();
-                    
-                    const pauseTime = Math.floor(currentTime);
-                    const newUrl = `https://www.youtube.com/embed/${currentVideoId}?enablejsapi=1&start=${pauseTime}&autoplay=0&rel=0&modestbranding=1&origin=${encodeURIComponent(window.location.origin)}`;
-                    iframe.src = newUrl;
+                    player.pauseVideo();
                     showDeleteNotification(`⏸️ 在 ${formatTime(currentTime)} 暫停`);
                 }
             } else if (action === 'back') {
                 currentTime = Math.max(0, currentTime - 5);
-                const newTime = Math.floor(currentTime);
-                const newUrl = `https://www.youtube.com/embed/${currentVideoId}?enablejsapi=1&start=${newTime}&autoplay=${isPlaying ? 1 : 0}&rel=0&modestbranding=1&origin=${encodeURIComponent(window.location.origin)}`;
-                iframe.src = newUrl;
+                player.seekTo(currentTime, true);
                 updateTimeDisplay();
                 showDeleteNotification(`⏪ 後退到 ${formatTime(currentTime)}`);
             } else if (action === 'forward') {
                 currentTime += 5;
-                const newTime = Math.floor(currentTime);
-                const newUrl = `https://www.youtube.com/embed/${currentVideoId}?enablejsapi=1&start=${newTime}&autoplay=${isPlaying ? 1 : 0}&rel=0&modestbranding=1&origin=${encodeURIComponent(window.location.origin)}`;
-                iframe.src = newUrl;
+                player.seekTo(currentTime, true);
                 updateTimeDisplay();
                 showDeleteNotification(`⏩ 前進到 ${formatTime(currentTime)}`);
             }
@@ -896,14 +958,8 @@
         }
         
         function seekToTime(seconds, useYouTubeTime = false) {
-            if (!isVideoLoaded) {
+            if (!isVideoLoaded || !player) {
                 showDeleteNotification('請先載入YouTube影片', 'error');
-                return;
-            }
-            
-            const iframe = document.getElementById('youtubeIframe');
-            if (!iframe) {
-                showDeleteNotification('影片載入錯誤', 'error');
                 return;
             }
             
@@ -917,8 +973,8 @@
                 currentTime = targetTime;
                 updateTimeDisplay();
                 
-                const newUrl = `https://www.youtube.com/embed/${currentVideoId}?enablejsapi=1&start=${Math.floor(targetTime)}&autoplay=1&rel=0&modestbranding=1&origin=${encodeURIComponent(window.location.origin)}`;
-                iframe.src = newUrl;
+                player.seekTo(targetTime, true);
+                player.playVideo();
                 
                 isPlaying = true;
                 startTimeTracking();
