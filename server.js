@@ -11,6 +11,22 @@ const __dirname = dirname(__filename);
 const app = express();
 const DEFAULT_PORT = 3000;
 
+// ANSI 轉義序列顏色代碼
+const colors = {
+    blue: '\x1b[34m',
+    green: '\x1b[32m',
+    yellow: '\x1b[33m',
+    cyan: '\x1b[36m',
+    underline: '\x1b[4m',
+    reset: '\x1b[0m'
+};
+
+// 創建可點擊的連結
+function createClickableLink(url) {
+    // OSC 8 格式：ESC ] 8 ; ; URL ST text ESC \ 
+    return `\x1b]8;;${url}\x07${url}\x1b]8;;\x07`;
+}
+
 // 啟用 CORS
 app.use(cors());
 
@@ -102,11 +118,22 @@ app.get('/api/subtitles', async (req, res) => {
 async function startServer() {
     try {
         const port = await getPort({port: DEFAULT_PORT});
+        const url = `http://localhost:${port}`;
+        
         app.listen(port, () => {
-            console.log(`伺服器運行在 http://localhost:${port}`);
+            console.clear(); // 清除終端機
+            console.log(`\n${colors.green}✓ 伺服器已成功啟動！${colors.reset}\n`);
+            
+            // 使用下劃線和顏色來突出顯示 URL
+            console.log(`${colors.blue}在瀏覽器中打開以下網址：${colors.reset}`);
+            console.log(`${colors.cyan}${colors.underline}${url}${colors.reset}\n`);
+            
             if (port !== DEFAULT_PORT) {
-                console.log(`注意：由於端口 ${DEFAULT_PORT} 已被占用，改用端口 ${port}`);
+                console.log(`${colors.yellow}注意：由於端口 ${DEFAULT_PORT} 已被占用，改用端口 ${port}${colors.reset}\n`);
             }
+
+            // 添加 Command+點擊 提示
+            console.log(`💡 提示：在終端機中使用 ${colors.underline}Command + 雙擊${colors.reset} 可快速選取網址\n`);
         });
     } catch (error) {
         console.error('啟動服務器失敗:', error);
