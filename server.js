@@ -1,15 +1,26 @@
-const express = require('express');
-const cors = require('cors');
-const { YoutubeTranscript } = require('youtube-transcript');
+import express from 'express';
+import cors from 'cors';
+import { YoutubeTranscript } from 'youtube-transcript';
+import getPort from 'get-port';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const app = express();
-const port = 3000;
+const DEFAULT_PORT = 3000;
 
 // 啟用 CORS
 app.use(cors());
 
 // 提供靜態檔案
 app.use(express.static('.'));
+
+// 根路徑處理
+app.get('/', (req, res) => {
+    res.sendFile(join(__dirname, 'youtube_subtitle_editor.html'));
+});
 
 // 獲取字幕的 API 端點
 app.get('/api/subtitles', async (req, res) => {
@@ -87,6 +98,20 @@ app.get('/api/subtitles', async (req, res) => {
     }
 });
 
-app.listen(port, () => {
-    console.log(`伺服器運行在 http://localhost:${port}`);
-}); 
+// 自動尋找可用端口並啟動服務器
+async function startServer() {
+    try {
+        const port = await getPort({port: DEFAULT_PORT});
+        app.listen(port, () => {
+            console.log(`伺服器運行在 http://localhost:${port}`);
+            if (port !== DEFAULT_PORT) {
+                console.log(`注意：由於端口 ${DEFAULT_PORT} 已被占用，改用端口 ${port}`);
+            }
+        });
+    } catch (error) {
+        console.error('啟動服務器失敗:', error);
+        process.exit(1);
+    }
+}
+
+startServer();
