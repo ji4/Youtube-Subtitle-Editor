@@ -114,6 +114,31 @@ app.get('/api/subtitles', async (req, res) => {
     }
 });
 
+// 代理字幕 URL（繞過 CORS，用於播放器 API 取得的預簽名字幕 URL）
+app.get('/api/proxy-captions', async (req, res) => {
+    try {
+        const captionUrl = req.query.url;
+        if (!captionUrl) return res.status(400).json({ error: 'URL 必填' });
+
+        let urlObj;
+        try { urlObj = new URL(captionUrl); } catch { return res.status(400).json({ error: '無效的 URL' }); }
+
+        const allowed = ['youtube.com', 'googlevideo.com', 'googleusercontent.com'];
+        if (!allowed.some(d => urlObj.hostname.endsWith(d))) {
+            return res.status(400).json({ error: '只允許 YouTube URL' });
+        }
+
+        const response = await fetch(captionUrl, {
+            headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36' }
+        });
+        const text = await response.text();
+        res.set('Content-Type', response.headers.get('content-type') || 'application/json');
+        res.send(text);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // 自動尋找可用端口並啟動服務器
 async function startServer() {
     try {
