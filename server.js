@@ -68,25 +68,45 @@ app.get('/api/subtitles', async (req, res) => {
             return res.status(404).json({ error: '找不到字幕' });
         }
 
-        // 處理字幕時間 - youtube-transcript 標準格式: {start: number, dur: number, text: string}
+        // 處理字幕時間 - youtube-transcript 可能回傳 offset/duration (毫秒) 或 start/dur (秒)
         const processedSubtitles = transcript.map((item, index) => {
             console.log(`處理第 ${index} 個字幕項目:`, JSON.stringify(item, null, 2));
             
             let start = 0;
+            let duration = null;
             
-            // youtube-transcript 的標準格式
-            if (typeof item.start === 'number') {
+            // youtube-transcript 新版格式：offset/duration 是毫秒
+            if (typeof item.offset === 'number') {
+                start = item.offset / 1000;
+                console.log(`時間來自 item.offset (毫秒):`, item.offset, '=>', start);
+            } else if (typeof item.offset === 'string') {
+                start = parseFloat(item.offset) / 1000;
+                console.log(`時間來自 item.offset (字串毫秒):`, item.offset, '=>', start);
+            // 舊版或其他來源可能已經是秒
+            } else if (typeof item.start === 'number') {
                 start = item.start;
-                console.log(`時間來自 item.start (數字):`, start);
+                console.log(`時間來自 item.start (秒):`, start);
             } else if (typeof item.start === 'string') {
                 start = parseFloat(item.start);
-                console.log(`時間來自 item.start (字串):`, start);
-            } else if (typeof item.offset === 'number') {
-                start = item.offset;
-                console.log(`時間來自 item.offset:`, start);
+                console.log(`時間來自 item.start (字串秒):`, start);
             } else {
                 console.warn('找不到時間資訊:', Object.keys(item));
-                start = index * 3; // 假設每個字幕間隔3秒
+                start = index * 3;
+            }
+
+            if (typeof item.duration === 'number') {
+                duration = item.offset !== undefined ? item.duration / 1000 : item.duration;
+            } else if (typeof item.duration === 'string') {
+                duration = parseFloat(item.duration);
+                if (item.offset !== undefined) duration = duration / 1000;
+            } else if (typeof item.dur === 'number') {
+                duration = item.dur;
+            } else if (typeof item.dur === 'string') {
+                duration = parseFloat(item.dur);
+            }
+
+            if (typeof item.start === 'number') {
+                duration = duration ?? item.dur ?? null;
             }
 
             // 確保時間是有效的數字
@@ -94,9 +114,13 @@ app.get('/api/subtitles', async (req, res) => {
                 console.warn('無效的時間值，使用索引計算:', item);
                 start = index * 3; // 假設每個字幕間隔3秒
             }
+            if (duration !== null && (isNaN(duration) || duration < 0)) {
+                duration = null;
+            }
 
             const result = {
                 start: start,
+                duration,
                 text: item.text
             };
             console.log('處理結果:', result);
