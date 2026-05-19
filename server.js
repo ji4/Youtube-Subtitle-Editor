@@ -128,10 +128,12 @@ app.get('/api/proxy-captions', async (req, res) => {
             return res.status(400).json({ error: '只允許 YouTube URL' });
         }
 
+        console.log('[proxy-captions] 抓取 URL:', captionUrl.slice(0, 120));
         const response = await fetch(captionUrl, {
             headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36' }
         });
         const text = await response.text();
+        console.log('[proxy-captions] 回應長度:', text.length, '| HTTP:', response.status);
         res.set('Content-Type', response.headers.get('content-type') || 'application/json');
         res.send(text);
     } catch (error) {
